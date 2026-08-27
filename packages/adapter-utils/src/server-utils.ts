@@ -3226,6 +3226,7 @@ export async function runChildProcess(
       "CLAUDE_CODE_ENTRYPOINT",
       "CLAUDE_CODE_SESSION",
       "CLAUDE_CODE_PARENT_SESSION",
+      "CODEX_CLI_SESSION",
     ] as const;
     for (const key of CLAUDE_CODE_NESTING_VARS) {
       delete rawMerged[key];

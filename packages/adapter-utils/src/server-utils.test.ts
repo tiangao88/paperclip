@@ -391,6 +391,61 @@ describe("adapter skill snapshots", () => {
 });
 
 describe("runChildProcess", () => {
+  it("strips CLI nesting guards while preserving runtime environment", async () => {
+    const inheritedValues = {
+      CLAUDECODE: process.env.CLAUDECODE,
+      CLAUDE_CODE_ENTRYPOINT: process.env.CLAUDE_CODE_ENTRYPOINT,
+      CLAUDE_CODE_SESSION: process.env.CLAUDE_CODE_SESSION,
+      CLAUDE_CODE_PARENT_SESSION: process.env.CLAUDE_CODE_PARENT_SESSION,
+      CODEX_CLI_SESSION: process.env.CODEX_CLI_SESSION,
+    };
+    const nestingVars = Object.keys(inheritedValues) as Array<keyof typeof inheritedValues>;
+    for (const key of nestingVars) process.env[key] = `inherited-${key}`;
+
+    try {
+      const result = await runChildProcess(
+        randomUUID(),
+        process.execPath,
+        [
+          "-e",
+          "process.stdout.write(JSON.stringify({nesting: process.env.CLAUDECODE, entrypoint: process.env.CLAUDE_CODE_ENTRYPOINT, session: process.env.CLAUDE_CODE_SESSION, parent: process.env.CLAUDE_CODE_PARENT_SESSION, codex: process.env.CODEX_CLI_SESSION, apiUrl: process.env.PAPERCLIP_API_URL, agentId: process.env.PAPERCLIP_AGENT_ID, path: process.env.PATH}))",
+        ],
+        {
+          cwd: process.cwd(),
+          env: {
+            CLAUDECODE: "explicit-CLAUDECODE",
+            CLAUDE_CODE_ENTRYPOINT: "explicit-entrypoint",
+            CLAUDE_CODE_SESSION: "explicit-session",
+            CLAUDE_CODE_PARENT_SESSION: "explicit-parent",
+            CODEX_CLI_SESSION: "explicit-codex",
+            PAPERCLIP_API_URL: "http://localhost:3100",
+            PAPERCLIP_AGENT_ID: "agent-123",
+          },
+          timeoutSec: 10,
+          graceSec: 5,
+          onLog: async () => {},
+        },
+      );
+
+      expect(result.exitCode).toBe(0);
+      const childEnv = JSON.parse(result.stdout);
+      expect(childEnv.nesting).toBeUndefined();
+      expect(childEnv.entrypoint).toBeUndefined();
+      expect(childEnv.session).toBeUndefined();
+      expect(childEnv.parent).toBeUndefined();
+      expect(childEnv.codex).toBeUndefined();
+      expect(childEnv.apiUrl).toBe("http://localhost:3100");
+      expect(childEnv.agentId).toBe("agent-123");
+      expect(childEnv.path).toBeTruthy();
+    } finally {
+      for (const key of nestingVars) {
+        const value = inheritedValues[key];
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it("does not arm a timeout when timeoutSec is 0", async () => {
     const result = await runChildProcess(
       randomUUID(),

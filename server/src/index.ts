@@ -32,6 +32,7 @@ import {
 import detectPort from "detect-port";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
+import { serverVersion } from "./version.js";
 import { logger } from "./middleware/logger.js";
 import {
   getManagedInstanceConfig,
@@ -735,6 +736,7 @@ export async function startServer(): Promise<StartedServer> {
   // self-hosted: createApp falls back to its built-in kubernetes-only default.
   const managedPluginAutoInstall = managedConfig?.plugins.autoInstall ?? null;
   const app = await createApp(db as any, {
+    hostVersion: serverVersion,
     uiMode,
     serverPort: listenPort,
     storageService,
