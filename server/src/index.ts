@@ -45,6 +45,7 @@ import {
 import detectPort from "detect-port";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
+import { serverVersion } from "./version.js";
 import { logger } from "./middleware/logger.js";
 import { setStartupRecoveryPhase } from "./startup-recovery-state.js";
 import {
@@ -913,7 +914,9 @@ async function startServerWithDatabaseTeardown(
     authPublicBaseUrl: config.authPublicBaseUrl,
     chatWebhookPublicBaseUrl: config.chatWebhookPublicBaseUrl,
     authReady,
+    authDisableSignUp: config.authDisableSignUp,
     companyDeletionEnabled: config.companyDeletionEnabled,
+    hostVersion: serverVersion,
     announcements: { enabled: config.announcementsEnabled, feedUrl: config.announcementsFeedUrl },
     pluginMigrationDb: pluginMigrationDb as any,
     betterAuthHandler,

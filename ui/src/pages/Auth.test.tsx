@@ -94,7 +94,11 @@ describe("AuthPage", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     getSessionMock.mockResolvedValue(null);
-    healthMock.mockResolvedValue({ status: "ok", deploymentMode: "authenticated" });
+    healthMock.mockResolvedValue({
+      status: "ok",
+      deploymentMode: "authenticated",
+      features: { authDisableSignUp: false },
+    });
     beginCloudSignInMock.mockReturnValue(true);
     signInEmailMock.mockResolvedValue(undefined);
     signUpEmailMock.mockResolvedValue(undefined);
@@ -222,6 +226,25 @@ describe("AuthPage", () => {
     expect(nameInput.getAttribute("autocomplete")).toBe("name");
     expect(nameInput.required).toBe(true);
     expect(passwordInput.getAttribute("autocomplete")).toBe("new-password");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("hides the sign-up affordance when account creation is disabled", async () => {
+    healthMock.mockResolvedValueOnce({
+      status: "ok",
+      features: {
+        authDisableSignUp: true,
+      },
+    });
+
+    const root = await mount();
+
+    expect(container.textContent).not.toContain("Need an account?");
+    expect(container.textContent).not.toContain("Create one");
+    expect(container.textContent).toContain("Sign in to Paperclip");
 
     await act(async () => {
       root.unmount();
