@@ -240,7 +240,7 @@ describe("AuthPage", () => {
       },
     });
 
-    const root = await mount();
+    const { root } = await mount();
 
     expect(container.textContent).not.toContain("Need an account?");
     expect(container.textContent).not.toContain("Create one");

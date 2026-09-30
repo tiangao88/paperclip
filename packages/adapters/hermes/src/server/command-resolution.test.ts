@@ -290,9 +290,8 @@ test("execute omits --model when Hermes model config is auto", async () => {
 
 test("execute uses Hermes config model when adapter model is auto", async () => {
   const { args, resultModel } = await runExecuteWithFakeHermes(
-    { model: "auto", extraArgs: ["--profile", "research"] },
+    { model: "auto" },
     {
-      hermesProfile: "research",
       hermesConfig: ["model:", "  default: gpt-5.5", "  provider: openai-codex"].join("\n"),
     },
   );
