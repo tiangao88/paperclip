@@ -58,6 +58,16 @@ test("extractHermesProfileFromArgs accepts supported profile argument forms", ()
 test("resolveHermesConfigPath uses Hermes home and selected profile", () => {
   expect(resolveHermesConfigPath({ env: { HERMES_HOME: "/tmp/hermes-home" } }, undefined))
     .toBe(path.join("/tmp/hermes-home", "config.yaml"));
+});
+
+test("extractHermesProfileFromArgs uses the last repeated profile arg", () => {
+  expect(extractHermesProfileFromArgs(["--profile", "base", "--profile", "research"]))
+    .toBe("research");
+  expect(extractHermesProfileFromArgs(["--profile=base", "-p=ops", "--profile studio"]))
+    .toBe("studio");
+});
+
+test("resolveHermesConfigPath uses configured HERMES_HOME and profile args", () => {
   expect(resolveHermesConfigPath({
     env: { HERMES_HOME: { type: "plain", value: "/tmp/hermes-home" } },
   }, ["--profile", "research"])).toBe(
