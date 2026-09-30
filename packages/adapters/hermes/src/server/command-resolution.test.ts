@@ -4,7 +4,13 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { expect, test } from "vitest";
 
 import { HERMES_CLI } from "../shared/constants.js";
-import { execute, resolveHermesCommand, splitHermesGlobalExtraArgs } from "./execute.js";
+import {
+  execute,
+  extractHermesProfileFromArgs,
+  resolveHermesCommand,
+  resolveHermesConfigPath,
+  splitHermesGlobalExtraArgs,
+} from "./execute.js";
 import { testEnvironment } from "./test.js";
 
 test("resolveHermesCommand prefers hermesCommand over command", () => {
@@ -40,6 +46,25 @@ test("splitHermesGlobalExtraArgs places profile args before chat", () => {
   });
 });
 
+test("extractHermesProfileFromArgs accepts supported profile argument forms", () => {
+  expect(extractHermesProfileFromArgs(["--profile", "research"])).toBe("research");
+  expect(extractHermesProfileFromArgs(["-p", "ops"])).toBe("ops");
+  expect(extractHermesProfileFromArgs(["--profile=default"])).toBe("default");
+  expect(extractHermesProfileFromArgs(["-p=worker"])).toBe("worker");
+  expect(extractHermesProfileFromArgs(["--profile studio"])).toBe("studio");
+  expect(extractHermesProfileFromArgs(["-p consulting"])).toBe("consulting");
+});
+
+test("resolveHermesConfigPath uses Hermes home and selected profile", () => {
+  expect(resolveHermesConfigPath({ env: { HERMES_HOME: "/tmp/hermes-home" } }, undefined))
+    .toBe(path.join("/tmp/hermes-home", "config.yaml"));
+  expect(resolveHermesConfigPath({
+    env: { HERMES_HOME: { type: "plain", value: "/tmp/hermes-home" } },
+  }, ["--profile", "research"])).toBe(
+    path.join("/tmp/hermes-home", "profiles", "research", "config.yaml"),
+  );
+});
+
 test("testEnvironment accepts config.command when hermesCommand is absent", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "hermes-command-resolution-"));
   const cliPath = path.join(tempDir, "fake-hermes");
@@ -67,6 +92,7 @@ test("testEnvironment accepts config.command when hermesCommand is absent", asyn
 interface FakeHermesOptions {
   authToken?: string;
   hermesConfig?: string;
+  hermesProfile?: string;
   inheritedEnv?: Record<string, string | undefined>;
 }
 
@@ -101,8 +127,11 @@ async function runExecuteWithFakeHermes(
     delete process.env.HOMEPATH;
 
     if (options.hermesConfig) {
-      await mkdir(path.join(tempDir, ".hermes"), { recursive: true });
-      await writeFile(path.join(tempDir, ".hermes", "config.yaml"), options.hermesConfig, "utf8");
+      const configDir = options.hermesProfile
+        ? path.join(tempDir, "profiles", options.hermesProfile)
+        : tempDir;
+      await mkdir(configDir, { recursive: true });
+      await writeFile(path.join(configDir, "config.yaml"), options.hermesConfig, "utf8");
     }
 
     await writeFile(
@@ -137,6 +166,7 @@ async function runExecuteWithFakeHermes(
             : {}),
           HERMES_ARGS_FILE: argsPath,
           HERMES_ENV_FILE: envPath,
+          ...(options.hermesConfig ? { HERMES_HOME: tempDir } : {}),
         },
       },
       runtime: {},
@@ -236,8 +266,11 @@ test("execute omits --model when Hermes model config is auto", async () => {
 
 test("execute uses Hermes config model when adapter model is auto", async () => {
   const { args, resultModel } = await runExecuteWithFakeHermes(
-    { model: "auto" },
-    { hermesConfig: ["model:", "  default: gpt-5.5", "  provider: openai-codex"].join("\n") },
+    { model: "auto", extraArgs: ["--profile", "research"] },
+    {
+      hermesProfile: "research",
+      hermesConfig: ["model:", "  default: gpt-5.5", "  provider: openai-codex"].join("\n"),
+    },
   );
 
   const modelFlagIndex = args.indexOf("-m");
@@ -249,15 +282,30 @@ test("execute uses Hermes config model when adapter model is auto", async () => 
 test("execute lets a selected Hermes profile resolve its own model", async () => {
   const { args, resultModel } = await runExecuteWithFakeHermes(
     { model: "auto", extraArgs: ["--profile", "profile-a"] },
-    [
-      "model:",
-      "  default: gpt-5.5",
-      "  provider: openai-codex",
-    ].join("\n"),
+    {
+      hermesProfile: "profile-a",
+      hermesConfig: ["model:", "  default: gpt-5.5", "  provider: openai-codex"].join("\n"),
+    },
   );
 
   expect(args.slice(0, 3)).toEqual(["--profile", "profile-a", "chat"]);
   expect(args).not.toContain("-m");
   expect(args).not.toContain("gpt-5.5");
   expect(resultModel).toBe("auto");
+});
+
+test("execute detects model and provider from selected profile when adapter model is unset", async () => {
+  const { args, resultModel } = await runExecuteWithFakeHermes(
+    { extraArgs: ["--profile", "research"] },
+    {
+      hermesProfile: "research",
+      hermesConfig: ["model:", "  default: gpt-5.5", "  provider: openai-codex"].join("\n"),
+    },
+  );
+
+  expect(args).toContain("-m");
+  expect(args).toContain("gpt-5.5");
+  expect(args).toContain("--provider");
+  expect(args).toContain("openai-codex");
+  expect(resultModel).toBe("gpt-5.5");
 });

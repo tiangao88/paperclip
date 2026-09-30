@@ -144,6 +144,41 @@ export function splitHermesGlobalExtraArgs(extraArgs: string[] | undefined): {
   return { preCommandArgs, postCommandArgs };
 }
 
+export function extractHermesProfileFromArgs(args: string[] | undefined): string | undefined {
+  if (!args?.length) return undefined;
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--profile" || arg === "-p") {
+      return cfgString(args[i + 1]);
+    }
+
+    const equalsMatch = arg.match(/^(?:--profile|-p)=(.+)$/);
+    if (equalsMatch?.[1]) return equalsMatch[1];
+
+    const splitMatch = arg.match(/^(?:--profile|-p)\s+(.+)$/);
+    if (splitMatch?.[1]) return splitMatch[1].trim() || undefined;
+  }
+
+  return undefined;
+}
+
+export function resolveHermesConfigPath(
+  config: Record<string, unknown>,
+  extraArgs: string[] | undefined,
+): string | undefined {
+  const envConfig = config.env as Record<string, unknown> | undefined;
+  const hermesHome = envConfig && typeof envConfig === "object"
+    ? cfgEnvString(envConfig.HERMES_HOME)
+    : undefined;
+  if (!hermesHome) return undefined;
+
+  const profile = extractHermesProfileFromArgs(extraArgs);
+  return profile
+    ? path.join(hermesHome, "profiles", profile, "config.yaml")
+    : path.join(hermesHome, "config.yaml");
+}
+
 // ---------------------------------------------------------------------------
 // Wake-up prompt builder
 // ---------------------------------------------------------------------------
@@ -405,7 +440,6 @@ export async function execute(
 
   // ── Resolve configuration ──────────────────────────────────────────────
   const hermesCmd = resolveHermesCommand(config);
-  let model = cfgString(config.model) || DEFAULT_MODEL;
   const timeoutSec = cfgNumber(config.timeoutSec) || DEFAULT_TIMEOUT_SEC;
   const graceSec = cfgNumber(config.graceSec) || DEFAULT_GRACE_SEC;
   const maxTurns = cfgNumber(config.maxTurnsPerRun);
@@ -413,6 +447,7 @@ export async function execute(
   const extraArgs = cfgStringArray(config.extraArgs);
   const { preCommandArgs, postCommandArgs } = splitHermesGlobalExtraArgs(extraArgs);
   const hasProfileArg = preCommandArgs.length > 0;
+  const configuredModel = cfgString(config.model);
   const persistSession = cfgBoolean(config.persistSession) !== false;
   const worktreeMode = cfgBoolean(config.worktreeMode) === true;
   const checkpoints = cfgBoolean(config.checkpoints) === true;
@@ -452,17 +487,19 @@ export async function execute(
   let detectedConfig: Awaited<ReturnType<typeof detectModel>> | null = null;
   const explicitProvider = cfgString(config.provider);
 
-  if (!explicitProvider) {
+  if (!explicitProvider || !configuredModel || (!hasProfileArg && configuredModel.toLowerCase() === "auto")) {
     try {
-      detectedConfig = await detectModel();
+      detectedConfig = await detectModel(resolveHermesConfigPath(config, extraArgs));
     } catch {
       // Non-fatal — detection failure shouldn't block execution
     }
   }
 
-  if (!hasProfileArg && model.toLowerCase() === "auto" && detectedConfig?.model && detectedConfig.model.toLowerCase() !== "auto") {
-    model = detectedConfig.model;
-  }
+  const model = configuredModel?.toLowerCase() === "auto" && hasProfileArg
+    ? configuredModel
+    : configuredModel?.toLowerCase() === "auto"
+      ? detectedConfig?.model || configuredModel
+      : configuredModel || detectedConfig?.model || DEFAULT_MODEL;
 
   const { provider: resolvedProvider, resolvedFrom } = resolveProvider({
     explicitProvider,
