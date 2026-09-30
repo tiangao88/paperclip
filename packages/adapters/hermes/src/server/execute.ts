@@ -170,6 +170,15 @@ export function extractHermesProfileFromArgs(args: string[] | undefined): string
   return profile;
 }
 
+function isSafeHermesProfileName(profile: string): boolean {
+  return profile !== "."
+    && profile !== ".."
+    && !path.isAbsolute(profile)
+    && !profile.includes("/")
+    && !profile.includes("\\")
+    && !profile.includes("\0");
+}
+
 export function resolveHermesConfigPath(
   config: Record<string, unknown>,
   extraArgs: string[] | undefined,
@@ -181,6 +190,9 @@ export function resolveHermesConfigPath(
   if (!hermesHome) return undefined;
 
   const profile = extractHermesProfileFromArgs(extraArgs);
+  if (profile && !isSafeHermesProfileName(profile)) {
+    throw new Error("Hermes profile must be a single directory name");
+  }
   return profile
     ? path.join(hermesHome, "profiles", profile, "config.yaml")
     : path.join(hermesHome, "config.yaml");
@@ -493,10 +505,11 @@ export async function execute(
   // correct provider is still used.
   let detectedConfig: Awaited<ReturnType<typeof detectModel>> | null = null;
   const explicitProvider = cfgString(config.provider);
+  const hermesConfigPath = resolveHermesConfigPath(config, extraArgs);
 
   if (!explicitProvider || !configuredModel || (!hasProfileArg && configuredModel.toLowerCase() === "auto")) {
     try {
-      detectedConfig = await detectModel(resolveHermesConfigPath(config, extraArgs));
+      detectedConfig = await detectModel(hermesConfigPath);
     } catch {
       // Non-fatal — detection failure shouldn't block execution
     }
